@@ -1,95 +1,75 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
 import type { AnalysisResult, ExperienceReport } from "../types";
 
-const model = "gemini-2.5-flash";
+const PROXY_URL = '/api/gemini-proxy';
 
-// Helper function to initialize the Gemini API client safely.
-const getAiClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    console.error("API key not found. Please ensure the API_KEY environment variable is set.");
-    return null;
+/**
+ * Helper function to call our secure proxy.
+ * @param action The action for the proxy to perform.
+ * @param payload The data to send to the proxy.
+ * @returns The text response from the AI.
+ */
+const callProxy = async (action: string, payload: any): Promise<string> => {
+  const response = await fetch(PROXY_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ action, payload }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Network error or invalid JSON response' }));
+    console.error(`Error calling proxy for action '${action}':`, errorData);
+    throw new Error(errorData.error || `Proxy request failed with status ${response.status}`);
   }
-  return new GoogleGenAI({ apiKey });
+  
+  const data = await response.json();
+  // The proxy now returns a consistent { text: "..." } object
+  return data.text;
 };
 
 export const analyzeReportContent = async (description: string): Promise<AnalysisResult> => {
-  const ai = getAiClient();
-  if (!ai) {
-     return {
-      tags: ["Errore di Configurazione"],
-      summary: "La chiave API per il servizio di analisi non è stata configurata correttamente. Contatta l'amministratore del sito.",
-    };
-  }
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: `Analizza la seguente descrizione di un'esperienza lavorativa negativa. Estrai le problematiche principali come tag (massimo 3) e fornisci un breve riassunto del problema. Restituisci il risultato in formato JSON. Descrizione: "${description}"`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            tags: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "Elenco delle problematiche chiave (es. 'Salario Basso', 'Orario Eccessivo')."
-            },
-            summary: {
-              type: Type.STRING,
-              description: "Un breve riassunto di 1-2 frasi della segnalazione."
-            }
-          },
-          required: ["tags", "summary"]
-        }
-      }
-    });
+    const jsonText = await callProxy('analyze', { description });
+     // Since the AI is now configured to return JSON, we parse it.
+    const parsedResult = JSON.parse(jsonText);
     
-    const jsonText = response.text.trim();
-    return JSON.parse(jsonText) as AnalysisResult;
+    // Basic validation to ensure the result has the expected shape
+    if (parsedResult && Array.isArray(parsedResult.tags) && typeof parsedResult.summary === 'string') {
+        return parsedResult as AnalysisResult;
+    } else {
+        // Fallback if the JSON structure is not what we expect
+        console.warn("AI response was not in the expected AnalysisResult format.", parsedResult);
+        return {
+            tags: ["Analisi Incompleta"],
+            summary: parsedResult.summary || "L'analisi ha prodotto un risultato in formato inatteso.",
+        };
+    }
   } catch (error) {
-    console.error("Error analyzing report content with Gemini:", error);
-    // Fallback in case of API error
+    console.error("Error analyzing report content via proxy:", error);
+    // Fallback in case of API error or JSON parsing error
     return {
       tags: ["Analisi Fallita"],
-      summary: "Non è stato possibile analizzare il contenuto della segnalazione.",
+      summary: "Non è stato possibile analizzare il contenuto. Il proxy di sicurezza o il servizio AI potrebbero essere non disponibili.",
     };
   }
 };
 
 export const generateBoycottAdvice = async (report: ExperienceReport): Promise<string> => {
-  const ai = getAiClient();
-  if (!ai) return "Servizio non disponibile: configurazione API mancante.";
   try {
-    const prompt = `Un utente ha segnalato l'azienda "${report.companyName}" nel settore "${report.sector}" per le seguenti ragioni: ${report.title}. Fornisci suggerimenti costruttivi su come i consumatori e altri lavoratori possono agire. Includi alternative all'azienda (se possibile), modi per sostenere i lavoratori e come diffondere consapevolezza. Evita un linguaggio aggressivo. Sii pratico e propositivo.`;
-    
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-    });
-
-    return response.text;
+    return await callProxy('advice', { report });
   } catch (error) {
-    console.error("Error generating advice with Gemini:", error);
+    console.error("Error generating advice via proxy:", error);
     return "Non è stato possibile generare suggerimenti in questo momento. Riprova più tardi.";
   }
 };
 
-
 export const generateResourceContent = async (): Promise<string> => {
-    const ai = getAiClient();
-    if (!ai) return "### Errore\n\nServizio non disponibile: configurazione API mancante.";
     try {
-        const prompt = `Crea una sezione di risorse per lavoratori in Italia in formato Markdown. La sezione deve includere: 1. Un'introduzione sui diritti fondamentali del lavoratore. 2. Una lista di link a sindacati e patronati italiani (usa link placeholder come 'https://link.a.sindacato.it'). 3. Consigli su come documentare abusi sul posto di lavoro. 4. Un paragrafo sulla tutela della privacy e l'importanza delle segnalazioni anonime.`;
-        const response = await ai.models.generateContent({
-          model,
-          contents: prompt,
-        });
-        return response.text;
+        return await callProxy('resources', {});
     } catch (error) {
-        console.error("Error generating resource content with Gemini:", error);
+        console.error("Error generating resource content via proxy:", error);
         return "### Errore nel caricamento delle risorse\n\nNon è stato possibile caricare le informazioni in questo momento. Riprova più tardi.";
     }
 };
-
