@@ -1,0 +1,16 @@
+# Dipendenze - sono enormi e chiunque può scaricarle con 'npm install'
+node_modules
+
+# File di build - vengono generati automaticamente
+dist
+.DS_Store
+
+# File di ambiente locale - CONTIENE LE TUE CHIAVI SEGRETE!
+.env
+.env.local
+.env.*.local
+
+# Log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
