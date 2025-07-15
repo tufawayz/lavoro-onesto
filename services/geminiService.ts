@@ -2,11 +2,21 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { AnalysisResult, ExperienceReport } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 const model = "gemini-2.5-flash";
 
+// Helper function to initialize the Gemini API client safely.
+const getAiClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.error("API key not found. Please ensure the API_KEY environment variable is set.");
+    return null;
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
 export const analyzeReportContent = async (description: string): Promise<AnalysisResult> => {
-  if (!process.env.API_KEY) {
+  const ai = getAiClient();
+  if (!ai) {
      return {
       tags: ["Errore di Configurazione"],
       summary: "La chiave API per il servizio di analisi non è stata configurata correttamente. Contatta l'amministratore del sito.",
@@ -49,7 +59,8 @@ export const analyzeReportContent = async (description: string): Promise<Analysi
 };
 
 export const generateBoycottAdvice = async (report: ExperienceReport): Promise<string> => {
-  if (!process.env.API_KEY) return "Servizio non disponibile: configurazione API mancante.";
+  const ai = getAiClient();
+  if (!ai) return "Servizio non disponibile: configurazione API mancante.";
   try {
     const prompt = `Un utente ha segnalato l'azienda "${report.companyName}" nel settore "${report.sector}" per le seguenti ragioni: ${report.title}. Fornisci suggerimenti costruttivi su come i consumatori e altri lavoratori possono agire. Includi alternative all'azienda (se possibile), modi per sostenere i lavoratori e come diffondere consapevolezza. Evita un linguaggio aggressivo. Sii pratico e propositivo.`;
     
@@ -67,7 +78,8 @@ export const generateBoycottAdvice = async (report: ExperienceReport): Promise<s
 
 
 export const generateResourceContent = async (): Promise<string> => {
-    if (!process.env.API_KEY) return "### Errore\n\nServizio non disponibile: configurazione API mancante.";
+    const ai = getAiClient();
+    if (!ai) return "### Errore\n\nServizio non disponibile: configurazione API mancante.";
     try {
         const prompt = `Crea una sezione di risorse per lavoratori in Italia in formato Markdown. La sezione deve includere: 1. Un'introduzione sui diritti fondamentali del lavoratore. 2. Una lista di link a sindacati e patronati italiani (usa link placeholder come 'https://link.a.sindacato.it'). 3. Consigli su come documentare abusi sul posto di lavoro. 4. Un paragrafo sulla tutela della privacy e l'importanza delle segnalazioni anonime.`;
         const response = await ai.models.generateContent({
@@ -80,3 +92,4 @@ export const generateResourceContent = async (): Promise<string> => {
         return "### Errore nel caricamento delle risorse\n\nNon è stato possibile caricare le informazioni in questo momento. Riprova più tardi.";
     }
 };
+
