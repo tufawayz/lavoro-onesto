@@ -1,4 +1,3 @@
-
 // /api/gemini-proxy.ts
 // Vercel Edge Function to securely proxy requests to the Google Gemini API.
 import { GoogleGenAI, Type } from "@google/genai";
@@ -15,10 +14,7 @@ export default async function handler(request: Request) {
     });
   }
 
-  // API_KEY is securely accessed from Vercel's environment variables
-  // IMPORTANT: The variable on Vercel must be named API_KEY.
   const apiKey = process.env.API_KEY;
-
   if (!apiKey) {
     return new Response(JSON.stringify({ error: 'API key not configured on the server.' }), {
       status: 500,
@@ -30,6 +26,8 @@ export default async function handler(request: Request) {
 
   try {
     const { action, payload } = await request.json();
+
+    // Handle non-streaming (JSON) cases
     let prompt: string;
     let config: any = {};
     
@@ -64,16 +62,11 @@ export default async function handler(request: Request) {
         Evita un linguaggio aggressivo. Sii propositivo e focalizzati su azioni realizzabili.`;
         break;
 
-      case 'resources':
-        prompt = `Crea una sezione di risorse utili per i lavoratori in Italia, formattata in Markdown. La risposta deve essere chiara, ben strutturata e facile da leggere. Includi:
-        - Un'introduzione sui diritti fondamentali del lavoratore (orario, ferie, contratto).
-        - Una sezione "A chi rivolgersi" con una lista di enti utili come Ispettorato del Lavoro, sindacati e patronati (usa nomi generici, non link specifici).
-        - Una sezione "Come Documentare gli Abusi" con consigli pratici (es. salvare email, screenshot, tenere un diario).
-        - Un paragrafo finale sull'importanza della privacy e della condivisione anonima per proteggere se stessi e aiutare gli altri.`;
-        break;
-
       default:
-        throw new Error(`Invalid action: ${action}`);
+        return new Response(JSON.stringify({ error: `Invalid action: ${action}` }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
     }
 
     const response = await ai.models.generateContent({
